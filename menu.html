@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restaurants</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="container">
+  <h2>Restaurants</h2>
+  <input id="search" placeholder="Search by restaurant name or cuisine..." oninput="render()">
+  <p id="msg" class="msg"></p>
+  <div id="list" class="grid"></div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  requireLogin("CUSTOMER");
+  renderNav();
+  let all = [];
+
+  function render() {
+    const q = document.getElementById("search").value.toLowerCase();
+    const rows = all.filter(r => (r.name + " " + (r.cuisine || "")).toLowerCase().includes(q));
+    document.getElementById("list").innerHTML = rows.length === 0 ? "<p>No restaurants found.</p>" : rows.map(r =>
+      '<div class="card">' +
+      (r.imageUrl ? '<img src="' + esc(r.imageUrl) + '" alt="">' : '') +
+      '<h3>' + esc(r.name) + '</h3>' +
+      '<span class="tag">' + esc(r.cuisine) + '</span>' +
+      '<p>' + esc(r.description) + '</p>' +
+      '<p style="color:#777;font-size:13px">&#128205; ' + esc(r.address) + '</p>' +
+      '<div>' + ratingLine(r) + '</div>' +
+      '<a class="btn-link" href="restaurant.html?id=' + r.id + '">View Menu</a></div>').join("");
+  }
+
+  (async function () {
+    try { all = await api("/api/restaurants"); render(); }
+    catch (e) { document.getElementById("msg").textContent = e.message; }
+  })();
+</script>
+</body>
+</html>

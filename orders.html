@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Orders</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="container">
+  <h2>My Orders</h2>
+  <p id="msg" class="msg"></p>
+  <div id="orders"></div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  requireLogin("CUSTOMER");
+  renderNav();
+  (async function () {
+    try {
+      const orders = await api("/api/orders/my");
+      const box = document.getElementById("orders");
+      if (orders.length === 0) { box.innerHTML = '<div class="card">No orders yet. Go to Restaurants and order something!</div>'; return; }
+      box.innerHTML = orders.map(o =>
+        '<div class="card"><div class="row"><b>Order #' + o.id + '</b>' +
+        '<span class="status">' + esc(o.status.replace(/_/g, " ")) + '</span></div>' +
+        (o.restaurant ? '<div><b>' + esc(o.restaurant.name) + '</b> &middot; <a href="restaurant.html?id=' + o.restaurant.id + '">Rate this restaurant</a></div>' : '') +
+        '<div style="color:#777;font-size:13px">' + new Date(o.orderDate).toLocaleString() + '</div>' +
+        '<ul>' + o.items.map(i => '<li>' + esc(i.foodItem.name) + ' x ' + i.quantity + ' &mdash; ' + money(i.price * i.quantity) + '</li>').join("") + '</ul>' +
+        '<b>Total: <span class="price">' + money(o.totalAmount) + '</span></b></div>').join("");
+    } catch (e) { document.getElementById("msg").textContent = e.message; }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restaurant</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="container">
+  <a href="menu.html">&larr; All restaurants</a>
+  <p id="msg" class="msg"></p>
+  <div class="card" id="header"></div>
+  <div class="card">
+    <b>Rate this restaurant:</b> <span id="rate"></span>
+    <span id="rateNote" style="color:#777;font-size:13px"></span>
+  </div>
+  <div class="layout">
+    <div>
+      <h2>Menu</h2>
+      <div id="foods" class="grid"></div>
+    </div>
+    <div>
+      <h2>Your Cart</h2>
+      <div class="card" id="cart"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  requireLogin("CUSTOMER");
+  renderNav();
+  const rid = Number(new URLSearchParams(window.location.search).get("id"));
+  let restaurant = null, foods = [], myRating = 0;
+
+  function setMsg(t, ok) {
+    const m = document.getElementById("msg");
+    m.textContent = t;
+    m.className = ok ? "msg ok" : "msg";
+  }
+
+  // ----- cart (one restaurant at a time) -----
+  function loadCart() {
+    try { const c = JSON.parse(localStorage.getItem("cart2")); if (c && c.items) return c; } catch (e) {}
+    return { restaurantId: null, items: {} };
+  }
+  let cart = loadCart();
+  function saveCart() { localStorage.setItem("cart2", JSON.stringify(cart)); }
+  function myItems() { return cart.restaurantId === rid ? cart.items : {}; }
+
+  function addToCart(id) {
+    if (cart.restaurantId !== rid && Object.keys(cart.items).length > 0) {
+      if (!confirm("Your cart has items from another restaurant. Clear it and start a new cart here?")) return;
+      cart = { restaurantId: rid, items: {} };
+    }
+    cart.restaurantId = rid;
+    cart.items[id] = (cart.items[id] || 0) + 1;
+    saveCart(); renderCart();
+  }
+  function changeQty(id, d) {
+    cart.items[id] = (cart.items[id] || 0) + d;
+    if (cart.items[id] <= 0) delete cart.items[id];
+    saveCart(); renderCart();
+  }
+
+  // ----- rendering -----
+  function renderHeader() {
+    document.getElementById("header").innerHTML =
+      '<h2>' + esc(restaurant.name) + '</h2>' +
+      '<span class="tag">' + esc(restaurant.cuisine) + '</span>' +
+      '<p>' + esc(restaurant.description) + '</p>' +
+      '<p style="color:#777;font-size:13px">&#128205; ' + esc(restaurant.address) + '</p>' +
+      '<div>' + ratingLine(restaurant) + '</div>';
+  }
+
+  function renderRate() {
+    let h = "";
+    for (let i = 1; i <= 5; i++) {
+      h += '<span class="star-pick' + (i <= myRating ? ' on' : '') + '" onclick="rate(' + i + ')">\u2605</span>';
+    }
+    document.getElementById("rate").innerHTML = h;
+    document.getElementById("rateNote").textContent = myRating
+      ? "You rated " + myRating + " star" + (myRating > 1 ? "s" : "") + " (click a star to change)"
+      : "Click a star to rate";
+  }
+
+  async function rate(n) {
+    try {
+      restaurant = await api("/api/restaurants/" + rid + "/rate", "POST", { stars: n });
+      myRating = n;
+      renderHeader(); renderRate();
+      setMsg("Thanks for rating!", true);
+    } catch (e) { setMsg(e.message); }
+  }
+
+  function renderFoods() {
+    document.getElementById("foods").innerHTML = foods.length === 0 ? "<p>No food items yet.</p>" : foods.map(f =>
+      '<div class="card">' +
+      (f.imageUrl ? '<img src="' + esc(f.imageUrl) + '" alt="">' : '') +
+      '<h3>' + esc(f.name) + '</h3>' +
+      '<span class="tag">' + esc(f.category) + '</span>' +
+      '<p>' + esc(f.description) + '</p>' +
+      '<div class="row"><span class="price">' + money(f.price) + '</span>' +
+      '<button class="btn small" onclick="addToCart(' + f.id + ')">Add</button></div></div>').join("");
+  }
+
+  function renderCart() {
+    const items = myItems();
+    const ids = Object.keys(items).filter(id => foods.some(f => f.id == id));
+    const box = document.getElementById("cart");
+    if (ids.length === 0) { box.innerHTML = "<p>Your cart is empty.</p>"; return; }
+    let total = 0;
+    let html = ids.map(id => {
+      const f = foods.find(x => x.id == id);
+      total += f.price * items[id];
+      return '<div class="row"><span>' + esc(f.name) + '</span><span>' +
+        '<button class="btn small gray" onclick="changeQty(' + id + ',-1)">-</button> ' + items[id] +
+        ' <button class="btn small" onclick="changeQty(' + id + ',1)">+</button></span>' +
+        '<span>' + money(f.price * items[id]) + '</span></div>';
+    }).join("");
+    html += '<hr><div class="row"><b>Total</b><b class="price">' + money(total) + '</b></div>' +
+      '<button class="btn" style="width:100%" onclick="placeOrder()">Place Order</button>';
+    box.innerHTML = html;
+  }
+
+  async function placeOrder() {
+    const items = Object.keys(myItems()).map(id => ({ foodId: Number(id), quantity: cart.items[id] }));
+    try {
+      await api("/api/orders", "POST", { items });
+      cart = { restaurantId: null, items: {} }; saveCart();
+      window.location = "orders.html";
+    } catch (e) { setMsg(e.message); }
+  }
+
+  (async function () {
+    try {
+      restaurant = await api("/api/restaurants/" + rid);
+      renderHeader();
+      foods = await api("/api/restaurants/" + rid + "/foods");
+      renderFoods(); renderCart();
+      myRating = (await api("/api/restaurants/" + rid + "/my-rating")).stars;
+      renderRate();
+    } catch (e) { setMsg(e.message); }
+  })();
+</script>
+</body>
+</html>

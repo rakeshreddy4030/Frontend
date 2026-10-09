@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="nav"></div>
+<div class="container">
+  <p id="msg" class="msg"></p>
+
+  <h2>1. Manage Restaurants</h2>
+  <div class="card">
+    <form id="restForm">
+      <input type="hidden" id="rId">
+      <label>Restaurant name</label><input id="rName" required>
+      <label>Cuisine</label><input id="rCuisine" placeholder="e.g. South Indian">
+      <label>Address / Area</label><input id="rAddr">
+      <label>Description</label><input id="rDesc">
+      <label>Image URL (optional)</label><input id="rImg">
+      <button class="btn" type="submit" id="rSaveBtn">Add Restaurant</button>
+      <button class="btn gray" type="button" onclick="resetRest()">Clear</button>
+    </form>
+  </div>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>ID</th><th>Name</th><th>Cuisine</th><th>Rating</th><th>Actions</th></tr></thead>
+    <tbody id="restRows"></tbody>
+  </table></div>
+
+  <h2>2. Manage Food Items</h2>
+  <div class="card">
+    <form id="foodForm">
+      <input type="hidden" id="fId">
+      <label>Restaurant</label>
+      <select id="fRest" required></select>
+      <label>Food name</label><input id="fName" required>
+      <label>Description</label><input id="fDesc">
+      <label>Price</label><input id="fPrice" type="number" step="0.01" min="1" required>
+      <label>Category</label><input id="fCat">
+      <label>Image URL (optional)</label><input id="fImg">
+      <button class="btn" type="submit" id="fSaveBtn">Add Food Item</button>
+      <button class="btn gray" type="button" onclick="resetFood()">Clear</button>
+    </form>
+  </div>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>ID</th><th>Restaurant</th><th>Name</th><th>Category</th><th>Price</th><th>Actions</th></tr></thead>
+    <tbody id="foodRows"></tbody>
+  </table></div>
+
+  <h2>3. All Orders</h2>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>#</th><th>Customer</th><th>Restaurant</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr></thead>
+    <tbody id="orderRows"></tbody>
+  </table></div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  requireLogin("ADMIN");
+  renderNav();
+  const STATUSES = ["PLACED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"];
+  let restaurants = [], foods = [];
+  const msg = t => document.getElementById("msg").textContent = t;
+
+  // ---------- restaurants ----------
+  async function loadRestaurants() {
+    restaurants = await api("/api/restaurants");
+    document.getElementById("restRows").innerHTML = restaurants.map(r =>
+      '<tr><td>' + r.id + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.cuisine) + '</td><td>' + ratingLine(r) + '</td>' +
+      '<td><button class="btn small" onclick="editRest(' + r.id + ')">Edit</button> ' +
+      '<button class="btn small red" onclick="deleteRest(' + r.id + ')">Delete</button></td></tr>').join("");
+    const sel = document.getElementById("fRest");
+    const current = sel.value;
+    sel.innerHTML = '<option value="">-- Select restaurant --</option>' +
+      restaurants.map(r => '<option value="' + r.id + '">' + esc(r.name) + '</option>').join("");
+    sel.value = current;
+  }
+
+  function editRest(id) {
+    const r = restaurants.find(x => x.id === id);
+    document.getElementById("rId").value = r.id;
+    document.getElementById("rName").value = r.name;
+    document.getElementById("rCuisine").value = r.cuisine || "";
+    document.getElementById("rAddr").value = r.address || "";
+    document.getElementById("rDesc").value = r.description || "";
+    document.getElementById("rImg").value = r.imageUrl || "";
+    document.getElementById("rSaveBtn").textContent = "Update Restaurant";
+    window.scrollTo(0, 0);
+  }
+  function resetRest() {
+    document.getElementById("restForm").reset();
+    document.getElementById("rId").value = "";
+    document.getElementById("rSaveBtn").textContent = "Add Restaurant";
+  }
+  document.getElementById("restForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const id = document.getElementById("rId").value;
+    const body = {
+      name: document.getElementById("rName").value,
+      cuisine: document.getElementById("rCuisine").value,
+      address: document.getElementById("rAddr").value,
+      description: document.getElementById("rDesc").value,
+      imageUrl: document.getElementById("rImg").value
+    };
+    try {
+      if (id) await api("/api/restaurants/" + id, "PUT", body); else await api("/api/restaurants", "POST", body);
+      msg(""); resetRest(); await loadRestaurants();
+    } catch (err) { msg(err.message); }
+  });
+  async function deleteRest(id) {
+    if (!confirm("Delete this restaurant?")) return;
+    try { await api("/api/restaurants/" + id, "DELETE"); msg(""); await loadRestaurants(); }
+    catch (err) { msg(err.message); }
+  }
+
+  // ---------- food items ----------
+  async function loadFoods() {
+    foods = await api("/api/foods");
+    document.getElementById("foodRows").innerHTML = foods.map(f =>
+      '<tr><td>' + f.id + '</td><td>' + (f.restaurant ? esc(f.restaurant.name) : '-') + '</td><td>' + esc(f.name) + '</td><td>' +
+      esc(f.category) + '</td><td>' + money(f.price) + '</td>' +
+      '<td><button class="btn small" onclick="editFood(' + f.id + ')">Edit</button> ' +
+      '<button class="btn small red" onclick="deleteFood(' + f.id + ')">Delete</button></td></tr>').join("");
+  }
+  function editFood(id) {
+    const f = foods.find(x => x.id === id);
+    document.getElementById("fId").value = f.id;
+    document.getElementById("fRest").value = f.restaurant ? f.restaurant.id : "";
+    document.getElementById("fName").value = f.name;
+    document.getElementById("fDesc").value = f.description || "";
+    document.getElementById("fPrice").value = f.price;
+    document.getElementById("fCat").value = f.category || "";
+    document.getElementById("fImg").value = f.imageUrl || "";
+    document.getElementById("fSaveBtn").textContent = "Update Food Item";
+    document.getElementById("foodForm").scrollIntoView();
+  }
+  function resetFood() {
+    document.getElementById("foodForm").reset();
+    document.getElementById("fId").value = "";
+    document.getElementById("fSaveBtn").textContent = "Add Food Item";
+  }
+  document.getElementById("foodForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const id = document.getElementById("fId").value;
+    const body = {
+      restaurantId: Number(document.getElementById("fRest").value),
+      name: document.getElementById("fName").value,
+      description: document.getElementById("fDesc").value,
+      price: Number(document.getElementById("fPrice").value),
+      category: document.getElementById("fCat").value,
+      imageUrl: document.getElementById("fImg").value
+    };
+    try {
+      if (id) await api("/api/foods/" + id, "PUT", body); else await api("/api/foods", "POST", body);
+      msg(""); resetFood(); await loadFoods();
+    } catch (err) { msg(err.message); }
+  });
+  async function deleteFood(id) {
+    if (!confirm("Delete this item?")) return;
+    try { await api("/api/foods/" + id, "DELETE"); msg(""); await loadFoods(); }
+    catch (err) { msg(err.message); }
+  }
+
+  // ---------- orders ----------
+  async function loadOrders() {
+    const orders = await api("/api/orders/admin/all");
+    document.getElementById("orderRows").innerHTML = orders.map(o =>
+      '<tr><td>' + o.id + '</td><td>' + esc(o.user.name) + '<br><small>' + esc(o.user.email) + '</small></td>' +
+      '<td>' + (o.restaurant ? esc(o.restaurant.name) : '-') + '</td>' +
+      '<td>' + o.items.map(i => esc(i.foodItem.name) + ' x ' + i.quantity).join("<br>") + '</td>' +
+      '<td>' + money(o.totalAmount) + '</td><td>' + new Date(o.orderDate).toLocaleString() + '</td>' +
+      '<td><select onchange="setStatus(' + o.id + ', this.value)">' +
+      STATUSES.map(s => '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s.replace(/_/g, " ") + '</option>').join("") +
+      '</select></td></tr>').join("");
+  }
+  async function setStatus(id, status) {
+    try { await api("/api/orders/admin/" + id + "/status", "PUT", { status }); msg(""); }
+    catch (err) { msg(err.message); loadOrders(); }
+  }
+
+  loadRestaurants().then(loadFoods).then(loadOrders).catch(e => msg(e.message));
+</script>
+</body>
+</html>
